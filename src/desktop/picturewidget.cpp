@@ -33,6 +33,35 @@
 #include "rendersettingsdialog.h"
 
 
+namespace {
+
+QString linkifyItemId(QString description, const BrickLink::Item *item)
+{
+    if (!item)
+        return description;
+
+    const QString itemId = QString::fromLatin1(item->id());
+    const QString currentMarkup = u"<b>" + itemId + u"</b>";
+    const QString replacement = u"<b><a href=\"itemid:" + itemId.toHtmlEscaped()
+                                + u"\">" + itemId.toHtmlEscaped() + u"</a></b>";
+
+    if (const qsizetype pos = description.indexOf(currentMarkup); pos >= 0)
+        description.replace(pos, currentMarkup.size(), replacement);
+
+    return description;
+}
+
+QString itemIdFromLink(const QString &href)
+{
+    static const QString prefix = u"itemid:"_qs;
+    if (href.startsWith(prefix))
+        return href.sliced(prefix.size());
+    return { };
+}
+
+} // namespace
+
+
 PictureWidget::PictureWidget(QWidget *parent)
     : QFrame(parent)
 {
@@ -43,8 +72,16 @@ PictureWidget::PictureWidget(QWidget *parent)
     w_text = new QLabel(this);
     w_text->setAlignment(Qt::AlignTop | Qt::AlignHCenter);
     w_text->setWordWrap(true);
-    w_text->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    w_text->setTextFormat(Qt::RichText);
+    w_text->setTextInteractionFlags(Qt::TextSelectableByMouse
+                                    | Qt::LinksAccessibleByMouse
+                                    | Qt::LinksAccessibleByKeyboard);
+    w_text->setOpenExternalLinks(false);
     w_text->setContextMenuPolicy(Qt::DefaultContextMenu);
+    connect(w_text, &QLabel::linkActivated, this, [this](const QString &href) {
+        if (const auto itemId = itemIdFromLink(href); !itemId.isEmpty())
+            emit itemIdActivated(itemId);
+    });
 
     new EventFilter(w_text, { QEvent::ContextMenu }, [this](QObject *, QEvent *) {
         w_text->setContextMenuPolicy(w_text->hasSelectedText() ? Qt::DefaultContextMenu
@@ -298,8 +335,9 @@ void PictureWidget::setItemAndColor(const BrickLink::Item *item, const BrickLink
     m_blPriceGuide->setVisible(item && color);
     m_blLotsForSale->setVisible(item && color);
 
-    QString s = BrickLink::core()->itemHtmlDescription(m_item, m_color,
-                                                       palette().color(QPalette::Highlight));
+    QString s = linkifyItemId(BrickLink::core()->itemHtmlDescription(m_item, m_color,
+                                                                     palette().color(QPalette::Highlight)),
+                              m_item);
     w_text->setText(u"<center>" + s + u"</center>");
     w_image->setPixmap({ });
     w_3d->setEnabled(w_ldraw->canRender());

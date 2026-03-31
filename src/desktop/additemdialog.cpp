@@ -161,6 +161,13 @@ AddItemDialog::AddItemDialog(QWidget *parent)
 
     w_picture->setFrameStyle(int(QFrame::StyledPanel) | int(QFrame::Sunken));
     w_picture->setLineWidth(2);
+    connect(w_picture, &PictureWidget::itemIdActivated, this, [this](const QString &itemId) {
+        if (itemId.isEmpty())
+            return;
+
+        close();
+        emit findInActiveDocumentRequested(itemId);
+    });
 
     w_price_guide->setFrameStyle(int(QFrame::StyledPanel) | int(QFrame::Sunken));
     w_price_guide->setLineWidth(2);

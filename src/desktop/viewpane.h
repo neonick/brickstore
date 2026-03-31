@@ -45,6 +45,7 @@ public:
     void updateStatistics();
     void updateBlockState(bool blocked);
     void focusFilter();
+    void filterByItemId(const QString &itemId);
 
     void setFilterFavoritesModel(QStringListModel *model);
 

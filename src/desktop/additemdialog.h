@@ -44,6 +44,7 @@ public:
 
 signals:
     void closed();
+    void findInActiveDocumentRequested(const QString &itemId);
 
 protected slots:
     void languageChange();

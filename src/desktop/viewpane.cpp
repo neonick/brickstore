@@ -569,6 +569,24 @@ void ViewPane::focusFilter()
         m_filter->setFocus(Qt::ShortcutFocusReason);
 }
 
+void ViewPane::filterByItemId(const QString &itemId)
+{
+    if (itemId.isEmpty() || !activeDocument())
+        return;
+
+    if (!m_filterOnOff->isChecked())
+        m_filterOnOff->defaultAction()->toggle();
+
+    Filter filter;
+    filter.setField(DocumentModel::PartNo);
+    filter.setComparison(Filter::Is);
+    filter.setExpression(itemId);
+    m_filter->setFilter({ filter });
+
+    if (m_filterOnOff->isChecked())
+        m_filter->setFocus(Qt::ShortcutFocusReason);
+}
+
 void ViewPane::setFilterFavoritesModel(QStringListModel *model)
 {
     m_filter->setFavoritesModel(model);

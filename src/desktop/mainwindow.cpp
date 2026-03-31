@@ -1234,6 +1234,11 @@ void MainWindow::showAddItemDialog(const BrickLink::Item *item, const BrickLink:
             raise();
             activateWindow();
         });
+        connect(m_add_dialog, &AddItemDialog::findInActiveDocumentRequested,
+                this, [this](const QString &itemId) {
+            if (m_activeViewPane)
+                m_activeViewPane->filterByItemId(itemId);
+        });
     }
 
     if (!m_add_dialog->isVisible())

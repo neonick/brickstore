@@ -34,6 +34,9 @@ public:
     bool prefer3D() const;
     void setPrefer3D(bool b);
 
+signals:
+    void itemIdActivated(const QString &itemId);
+
 protected slots:
     void showImage();
     void stackSwitch();
