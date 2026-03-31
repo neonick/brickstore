@@ -26,6 +26,22 @@
 #include "capture.h"
 
 
+static struct SetQtMMBackend  // clazy:exclude=non-pod-global-static
+{
+    // QTBUG-120026: The default FFmpeg backend completely freezes the main thread for 1-3 sec
+    // when enumerating camera devices on Windows and macOS. We also saw camera regressions after
+    // switching away from the native backends, so keep forcing them for desktop builds.
+    SetQtMMBackend()
+    {
+#if defined(Q_OS_WINDOWS)
+        qputenv("QT_MEDIA_BACKEND", "windows");
+#elif defined(Q_OS_MACOS)
+        qputenv("QT_MEDIA_BACKEND", "darwin");
+#endif
+    }
+} setQtMMBackend;
+
+
 using namespace std::chrono_literals;
 
 namespace Scanner {
@@ -210,7 +226,7 @@ void Capture::trackWindowVisibility(QObject *window)
                 setState(State::Inactive);
         } else if (e->type() == QEvent::Show) {
             d->winVisible = true;
-            if (d->appActive && (state() == State::Inactive))
+            if (d->appActive && (state() != State::Scanning) && (state() != State::Capturing))
                 setState(State::Idle);
         }
         return EventFilter::ContinueEventProcessing;
@@ -360,7 +376,8 @@ void Capture::setCurrentCameraId(const QByteArray &newCameraId)
             this, &Capture::cameraActiveChanged);
 
     d->captureSession->setCamera(d->camera.get());
-    d->camera->start();
+    if (d->appActive && d->winVisible && (state() != State::Inactive))
+        d->camera->start();
 }
 
 QByteArray Capture::currentBackendId() const
