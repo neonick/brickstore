@@ -445,9 +445,13 @@ void FilterWidget::setDocument(Document *doc)
             } else {
                 if (m_doc->model()->filter().isEmpty()) {
                     auto lastFilter = m_doc->property("_viewPaneLastFilter").value<QVector<Filter>>();
-                    if (lastFilter.isEmpty())
-                        lastFilter.append(Filter { });
-                    setFilter(lastFilter);
+                    if (lastFilter.isEmpty()) {
+                        m_filter.clear();
+                        setFilterTerms({ });
+                        setFilterText({ });
+                    } else {
+                        setFilter(lastFilter);
+                    }
                 }
             }
 
@@ -592,8 +596,12 @@ void FilterWidget::setFilterTerms(const QVector<Filter> &filter)
     if (m_doc) {
         for (const auto &f : filter)
             addFilterTerm(f);
-        if (filter.isEmpty())
-            addFilterTerm({ });
+        if (filter.isEmpty()) {
+            Filter defaultFilter;
+            defaultFilter.setField(DocumentModel::PartNo);
+            defaultFilter.setComparison(Filter::Is);
+            addFilterTerm(defaultFilter);
+        }
     }
 }
 
