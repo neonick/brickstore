@@ -12,6 +12,7 @@
 #include <QHelpEvent>
 #include <QToolButton>
 #include <QStyle>
+#include <QUrl>
 #include <QClipboard>
 #include <QFileDialog>
 #include <QQmlApplicationEngine>
@@ -154,6 +155,26 @@ PictureWidget::PictureWidget(QWidget *parent)
     buttons->addWidget(w_3d, 10);
     buttons->addWidget(w_reloadRescale, 10);
     layout->addLayout(buttons);
+
+    w_marketLinks = new QLabel(this);
+    w_marketLinks->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    w_marketLinks->setTextFormat(Qt::RichText);
+    w_marketLinks->setTextInteractionFlags(Qt::LinksAccessibleByMouse
+                                           | Qt::LinksAccessibleByKeyboard);
+    w_marketLinks->setOpenExternalLinks(false);
+    w_marketLinks->setText(uR"(<a href="bricksapp">BricksApp</a> · <a href="brickfox">BrickFox</a>)"_qs);
+    w_marketLinks->setVisible(false);
+    connect(w_marketLinks, &QLabel::linkActivated, this, [this](const QString &href) {
+        if (!m_item || (m_item->itemTypeId() != 'M'))
+            return;
+
+        const QString itemId = QString::fromLatin1(m_item->id());
+        if (href == u"bricksapp")
+            Application::openUrl(QUrl(u"https://bricksapp.ru/catalog/minifigures/" + itemId));
+        else if (href == u"brickfox")
+            Application::openUrl(QUrl(u"https://brickfox.ru/catalog/M/" + itemId));
+    });
+    layout->addWidget(w_marketLinks);
 
     m_blCatalog = new QAction(QIcon::fromTheme(u"bricklink-catalog"_qs), { }, this);
     connect(m_blCatalog, &QAction::triggered, this, [this]() {
@@ -326,6 +347,7 @@ void PictureWidget::setItemAndColor(const BrickLink::Item *item, const BrickLink
     m_blCatalog->setVisible(item);
     m_blPriceGuide->setVisible(item && color);
     m_blLotsForSale->setVisible(item && color);
+    w_marketLinks->setVisible(item && (item->itemTypeId() == 'M'));
 
     QString s = linkifyItemId(BrickLink::core()->itemHtmlDescription(m_item, m_color,
                                                                      palette().color(QPalette::Highlight)),

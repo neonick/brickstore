@@ -56,6 +56,7 @@ private:
     BrickLink::PictureRef m_pic;
     QLabel *w_text = nullptr;
     QLabel *w_image = nullptr;
+    QLabel *w_marketLinks = nullptr;
     QImage m_image;
     bool m_prefer3D = true;
     bool m_supports3D = true;
