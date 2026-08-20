@@ -98,7 +98,11 @@ public:
 
     void setActive(bool active);
 
+    // Asks the user about unsaved changes, then closes (and deletes) the document.
     QCoro::Task<bool> requestClose();
+
+    // Closes (and deletes) the document without any user interaction
+    bool close(bool force = false);
 
     QString filePath() const;
     QString fileName() const;
@@ -274,7 +278,7 @@ private:
     void applyTo(const LotList &lots,
                  const char *actionName, const std::function<DocumentModel::ApplyToResult (const Lot &, Lot &)> &callback);
     bool updatePriceToGuide(BrickLink::Lot *lot, const BrickLink::PriceGuide *pg);
-    void priceGuideUpdated(BrickLink::PriceGuide *pg);
+    void priceGuideUpdated(const BrickLink::PriceGuideRef &pg);
     void cancelPriceGuideUpdates();
     enum ExportCheckMode {
         ExportToFile = 0,
@@ -293,6 +297,8 @@ private:
     void hideColumnDirect(int logical, bool newHidden);
     void setColumnLayoutDirect(QVector<ColumnData> &columnData);
 
+    void closeInternal();
+
     void autosave() const;
     void deleteAutosave();
 
@@ -309,7 +315,8 @@ private:
     struct SetToPriceGuideData
     {
         std::vector<std::pair<Lot *, Lot>> changes;
-        QMultiHash<BrickLink::PriceGuide *, Lot *>    priceGuides;
+        // the key owns a reference, so a pending price guide cannot be evicted while we wait
+        QMultiHash<BrickLink::PriceGuideRef, Lot *>   priceGuides;
         int              failCount = 0;
         int              doneCount = 0;
         int              totalCount = 0;

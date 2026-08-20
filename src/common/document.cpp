@@ -536,13 +536,18 @@ QCoro::Task<bool> Document::requestClose()
     bool doClose = true;
 
     if (m_model->isModified()) {
+        // the file dialog is only window modal on macOS, so the document can be
+        // closed and deleted while this coroutine is suspended
+        QPointer<Document> that = this;
+
         switch (co_await UIHelpers::question(tr("The document %1 has been modified.").arg(CMB_BOLD(fileName()))
                                              + u"<br><br>" + tr("Do you want to save your changes?"),
                                              UIHelpers::Save | UIHelpers::Discard | UIHelpers::Cancel,
                                              UIHelpers::Save)) {
         case UIHelpers::Save:
-            co_await save(false);
-            doClose = (!m_model->isModified());
+            if (that)
+                co_await save(false);
+            doClose = that && !that->m_model->isModified();
             break;
 
         case UIHelpers::Discard:
@@ -552,12 +557,29 @@ QCoro::Task<bool> Document::requestClose()
             doClose = false;
             break;
         }
+        if (!that)
+            co_return true; // it was already closed and deleted
     }
-    if (doClose) {
-        emit closeAllViewsForDocument();
-        delete this;
-    }
+    if (doClose)
+        closeInternal();
     co_return doClose;
+}
+
+bool Document::close(bool force)
+{
+    if (isBlockingOperationActive())
+        return false;
+    if (m_model->isModified() && !force)
+        return false;
+
+    closeInternal();
+    return true;
+}
+
+void Document::closeInternal()
+{
+    emit closeAllViewsForDocument();
+    delete this;
 }
 
 QString Document::filePath() const
@@ -1010,6 +1032,14 @@ void Document::setPriceToGuide(BrickLink::Time time, BrickLink::Price price, boo
                                BrickLink::NoPriceGuideOption noPgOption)
 {
     Q_ASSERT(!m_setToPG);
+
+    const double currencyRate = Currency::inst()->rate(m_model->currencyCode());
+    if (qFuzzyIsNull(currencyRate)) {
+        UIHelpers::warning(tr("No exchange rate is available for this document's currency (%1).")
+                               .arg(CMB_BOLD(m_model->currencyCode())));
+        return;
+    }
+
     const auto sel = selectedLots();
 
     Q_ASSERT(!isBlockingOperationActive());
@@ -1023,23 +1053,22 @@ void Document::setPriceToGuide(BrickLink::Time time, BrickLink::Price price, boo
     m_setToPG->doneCount = 0;
     m_setToPG->time = time;
     m_setToPG->price = price;
-    m_setToPG->currencyRate = Currency::inst()->rate(m_model->currencyCode());
+    m_setToPG->currencyRate = currencyRate;
     m_setToPG->noPgOption = noPgOption;
 
     for (Lot *lot : sel) {
-        BrickLink::PriceGuide *pg = BrickLink::core()->priceGuideCache()->priceGuide(lot->item(), lot->color());
+        BrickLink::PriceGuideRef pg = BrickLink::core()->priceGuideCache()->priceGuide(lot->item(), lot->color());
 
         if (pg && forceUpdate && (pg->updateStatus() != BrickLink::UpdateStatus::Updating)) {
-            pg->update();
+            BrickLink::core()->priceGuideCache()->updatePriceGuide(pg);
         }
 
         if (pg && ((pg->updateStatus() == BrickLink::UpdateStatus::Loading)
                    || (pg->updateStatus() == BrickLink::UpdateStatus::Updating))) {
             m_setToPG->priceGuides.insert(pg, lot);
-            pg->addRef();
 
         } else {
-            if (!updatePriceToGuide(lot, pg))
+            if (!updatePriceToGuide(lot, pg.get()))
                 ++m_setToPG->failCount;
             ++m_setToPG->doneCount;
             emit blockingOperationProgress(m_setToPG->doneCount, m_setToPG->totalCount);
@@ -1050,7 +1079,7 @@ void Document::setPriceToGuide(BrickLink::Time time, BrickLink::Price price, boo
     setBlockingOperationCancelCallback([this]() { cancelPriceGuideUpdates(); });
 
     if (m_setToPG->priceGuides.isEmpty())
-        priceGuideUpdated(nullptr);
+        priceGuideUpdated({ });
 }
 
 bool Document::updatePriceToGuide(BrickLink::Lot *lot, const BrickLink::PriceGuide *pg)
@@ -1091,7 +1120,7 @@ bool Document::updatePriceToGuide(BrickLink::Lot *lot, const BrickLink::PriceGui
     }
 }
 
-void Document::priceGuideUpdated(BrickLink::PriceGuide *pg)
+void Document::priceGuideUpdated(const BrickLink::PriceGuideRef &pg)
 {
     if (m_setToPG && pg) {
         const auto lots = m_setToPG->priceGuides.values(pg);
@@ -1102,10 +1131,9 @@ void Document::priceGuideUpdated(BrickLink::PriceGuide *pg)
             return; // loaded now, but still needs an online update
 
         for (auto lot : lots) {
-            if (!updatePriceToGuide(lot, pg))
+            if (!updatePriceToGuide(lot, pg.get()))
                 ++m_setToPG->failCount;
             ++m_setToPG->doneCount;
-            pg->release();
         }
 
         emit blockingOperationProgress(m_setToPG->doneCount, m_setToPG->totalCount);
@@ -1139,9 +1167,9 @@ void Document::cancelPriceGuideUpdates()
     if (m_setToPG) {
         m_setToPG->canceled = true;
         const auto pgs = m_setToPG->priceGuides.uniqueKeys();
-        for (BrickLink::PriceGuide *pg : pgs) {
+        for (const BrickLink::PriceGuideRef &pg : pgs) {
             if (pg->updateStatus() == BrickLink::UpdateStatus::Updating)
-                pg->cancelUpdate();
+                BrickLink::core()->priceGuideCache()->cancelPriceGuideUpdate(pg);
         }
     }
 }
@@ -1518,11 +1546,12 @@ QCoro::Task<> Document::exportBrickLinkXMLToFile()
         co_return;
 
     QString fn;
+    QPointer<Document> that = this; // the lots die with the document
     if (auto f = co_await UIHelpers::getSaveFileName(fn, DocumentIO::nameFiltersForBrickLinkXML(),
                                                      tr("Export File"))) {
         fn = *f;
     }
-    if (fn.isEmpty())
+    if (fn.isEmpty() || !that)
         co_return;
 
 #if !defined(Q_OS_ANDROID)
@@ -1702,6 +1731,10 @@ QCoro::Task<bool> Document::save(bool saveAs)
     QString fn;
     const auto filters = DocumentIO::nameFiltersForBrickStoreXML();
 
+    // the file dialog is only window modal on macOS, so the document can be
+    // closed and deleted while this coroutine is suspended
+    QPointer<Document> that = this;
+
     if (saveAs || filePath().isEmpty()) {
         fn = filePath();
         if (fn.right(4) == u".xml")
@@ -1721,7 +1754,7 @@ QCoro::Task<bool> Document::save(bool saveAs)
         fn = filePath();
     }
 
-    if (!fn.isEmpty()) {
+    if (!fn.isEmpty() && that) {
 #if !defined(Q_OS_ANDROID)
         QString suffix = u'.' + filters.at(0).second.at(0);
 
@@ -1782,17 +1815,16 @@ Document *Document::fromPartInventory(const BrickLink::Item *item,
             document->setThumbnail(thumbnail->image());
         } else if ((thumbnail->updateStatus() == BrickLink::UpdateStatus::Loading)
                    || (thumbnail->updateStatus() == BrickLink::UpdateStatus::Updating)) {
-            // Note: if the document is closed before the picture finishes loading, this connection
-            // never fires and we leak conn plus one reference on thumbnail. This is rare and minor.
-            auto *conn = new QMetaObject::Connection;
+            // The captured handle keeps the picture alive until it has been loaded. If the document
+            // is closed before that happens, the connection - and with it both captures - is
+            // destroyed, so nothing is leaked either.
+            auto conn = std::make_shared<QMetaObject::Connection>();
             *conn = connect(BrickLink::core()->pictureCache(), &BrickLink::PictureCache::pictureUpdated,
-                            document, [=](BrickLink::Picture *pic) {
+                            document, [document, thumbnail, conn](const BrickLink::PictureRef &pic) {
                 if (pic == thumbnail) {
                     if (thumbnail->isValid())
                         document->setThumbnail(thumbnail->image());
-                    thumbnail->release();
                     QObject::disconnect(*conn);
-                    delete conn;
                 }
             });
         }
