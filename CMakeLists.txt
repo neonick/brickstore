@@ -325,6 +325,8 @@ qt_add_resources(${PROJECT_NAME} brickstore_qrc PREFIX / FILES
     translations/translations.json
     assets/generated-app-icons/brickstore.png
     assets/generated-app-icons/brickstore_doc.png
+    assets/custom/bricksapp-favicon.svg
+    assets/custom/brickfox-favicon.svg
     ${ICONS_QRC}
     ${FLAGS_QRC}
     extensions/classic-print-script.bs.qml

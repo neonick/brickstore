@@ -157,12 +157,12 @@ PictureWidget::PictureWidget(QWidget *parent)
     layout->addLayout(buttons);
 
     w_marketLinks = new QLabel(this);
-    w_marketLinks->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    w_marketLinks->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
     w_marketLinks->setTextFormat(Qt::RichText);
     w_marketLinks->setTextInteractionFlags(Qt::LinksAccessibleByMouse
                                            | Qt::LinksAccessibleByKeyboard);
     w_marketLinks->setOpenExternalLinks(false);
-    w_marketLinks->setText(uR"(<a href="bricksapp">BricksApp</a> · <a href="brickfox">BrickFox</a>)"_qs);
+    w_marketLinks->setText(uR"(<a href="bricksapp"><img src=":/assets/custom/bricksapp-favicon.svg" width="18" height="18" style="vertical-align: middle"> BricksApp</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="brickfox"><img src=":/assets/custom/brickfox-favicon.svg" width="18" height="18" style="vertical-align: middle"> BrickFox</a>)"_qs);
     w_marketLinks->setVisible(false);
     connect(w_marketLinks, &QLabel::linkActivated, this, [this](const QString &href) {
         if (!m_item || (m_item->itemTypeId() != 'M'))
