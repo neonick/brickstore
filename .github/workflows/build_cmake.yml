@@ -663,12 +663,12 @@ jobs:
     #################################################
 
     - name: Generate Documentation
-      if: (matrix.config.os == 'linux') && matrix.config.debian_container && matrix.config.generate_docs && (github.ref == 'refs/heads/main')
+      if: (matrix.config.os == 'linux') && matrix.config.debian_container && matrix.config.generate_docs && (github.ref == 'refs/heads/main') && (github.repository == 'brickstore-dev/BrickStore')
       run: |
         sudo docker exec -w /brickstore "debian-build" cmake --build build --target extensions-doc --verbose
 
     - name: Publish Documentation
-      if: matrix.config.generate_docs && (github.ref == 'refs/heads/main')
+      if: matrix.config.generate_docs && (github.ref == 'refs/heads/main') && (github.repository == 'brickstore-dev/BrickStore')
       uses: peaceiris/actions-gh-pages@v4
       with:
         github_token: ${{ secrets.GITHUB_TOKEN }}
