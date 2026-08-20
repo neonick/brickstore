@@ -13,6 +13,7 @@
 #include <QToolButton>
 #include <QStyle>
 #include <QUrl>
+#include <QUrlQuery>
 #include <QClipboard>
 #include <QFileDialog>
 #include <QQmlApplicationEngine>
@@ -24,6 +25,7 @@
 #include "bricklink/core.h"
 #include "bricklink/delegate.h"
 #include "bricklink/item.h"
+#include "bricklink/itemtype.h"
 #include "bricklink/picture.h"
 #include "common/application.h"
 #include "common/config.h"
@@ -58,6 +60,62 @@ QString itemIdFromLink(const QString &href)
     if (href.startsWith(prefix))
         return href.sliced(prefix.size());
     return { };
+}
+
+QString bricksAppCatalogSegment(char itemTypeId)
+{
+    switch (itemTypeId) {
+    case 'P': return u"parts"_qs;
+    case 'M': return u"minifigures"_qs;
+    case 'S': return u"sets"_qs;
+    case 'I': return u"instructions"_qs;
+    default:  return { };
+    }
+}
+
+bool hasUsableColor(const BrickLink::Item *item, const BrickLink::Color *color)
+{
+    return item && item->itemType() && item->itemType()->hasColors() && color
+           && color->id() && (color->id() != BrickLink::Color::InvalidId);
+}
+
+QUrl bricksAppCatalogUrl(const BrickLink::Item *item, const BrickLink::Color *color)
+{
+    if (!item)
+        return { };
+
+    const QString segment = bricksAppCatalogSegment(item->itemTypeId());
+    if (segment.isEmpty())
+        return { };
+
+    QString path = u"/catalog/" + segment + u'/' + QString::fromLatin1(item->id());
+    if ((item->itemTypeId() == 'P') && hasUsableColor(item, color))
+        path += u'/' + QString::number(color->id());
+
+    QUrl url;
+    url.setScheme(u"https"_qs);
+    url.setHost(u"bricksapp.ru"_qs);
+    url.setPath(path);
+    return url;
+}
+
+QUrl brickFoxCatalogUrl(const BrickLink::Item *item, const BrickLink::Color *color)
+{
+    if (!item)
+        return { };
+
+    QUrl url;
+    url.setScheme(u"https"_qs);
+    url.setHost(u"brickfox.ru"_qs);
+    url.setPath(u"/catalog/" + QChar::fromLatin1(item->itemTypeId()) + u'/'
+                + QString::fromLatin1(item->id()));
+
+    if (hasUsableColor(item, color)) {
+        QUrlQuery query;
+        query.addQueryItem(u"color"_qs, QString::number(color->id()));
+        url.setQuery(query);
+    }
+    return url;
 }
 
 } // namespace
@@ -158,21 +216,24 @@ PictureWidget::PictureWidget(QWidget *parent)
 
     w_marketLinks = new QLabel(this);
     w_marketLinks->setAlignment(Qt::AlignHCenter | Qt::AlignVCenter);
+    w_marketLinks->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
     w_marketLinks->setTextFormat(Qt::RichText);
     w_marketLinks->setTextInteractionFlags(Qt::LinksAccessibleByMouse
                                            | Qt::LinksAccessibleByKeyboard);
     w_marketLinks->setOpenExternalLinks(false);
-    w_marketLinks->setText(uR"(<a href="bricksapp"><img src=":/assets/custom/bricksapp-favicon.svg" width="18" height="18" style="vertical-align: middle"> BricksApp</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="brickfox"><img src=":/assets/custom/brickfox-favicon.svg" width="18" height="18" style="vertical-align: middle"> BrickFox</a>)"_qs);
     w_marketLinks->setVisible(false);
     connect(w_marketLinks, &QLabel::linkActivated, this, [this](const QString &href) {
-        if (!m_item || (m_item->itemTypeId() != 'M'))
+        if (!m_item)
             return;
 
-        const QString itemId = QString::fromLatin1(m_item->id());
+        QUrl url;
         if (href == u"bricksapp")
-            Application::openUrl(QUrl(u"https://bricksapp.ru/catalog/minifigures/" + itemId));
+            url = bricksAppCatalogUrl(m_item, m_color);
         else if (href == u"brickfox")
-            Application::openUrl(QUrl(u"https://brickfox.ru/catalog/M/" + itemId));
+            url = brickFoxCatalogUrl(m_item, m_color);
+
+        if (!url.isEmpty())
+            Application::openUrl(url);
     });
     layout->addWidget(w_marketLinks);
 
@@ -347,7 +408,14 @@ void PictureWidget::setItemAndColor(const BrickLink::Item *item, const BrickLink
     m_blCatalog->setVisible(item);
     m_blPriceGuide->setVisible(item && color);
     m_blLotsForSale->setVisible(item && color);
-    w_marketLinks->setVisible(item && (item->itemTypeId() == 'M'));
+    if (item) {
+        if (!bricksAppCatalogSegment(item->itemTypeId()).isEmpty()) {
+            w_marketLinks->setText(uR"(<a href="bricksapp"><img src=":/assets/custom/bricksapp-favicon.svg" width="18" height="18" style="vertical-align: middle"> BricksApp</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="brickfox"><img src=":/assets/custom/brickfox-favicon.svg" width="18" height="18" style="vertical-align: middle"> BrickFox</a>)"_qs);
+        } else {
+            w_marketLinks->setText(uR"(<a href="brickfox"><img src=":/assets/custom/brickfox-favicon.svg" width="18" height="18" style="vertical-align: middle"> BrickFox</a>)"_qs);
+        }
+    }
+    w_marketLinks->setVisible(item);
 
     QString s = linkifyItemId(BrickLink::core()->itemHtmlDescription(m_item, m_color,
                                                                      palette().color(QPalette::Highlight)),
